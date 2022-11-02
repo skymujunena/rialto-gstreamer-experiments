@@ -1,0 +1,1 @@
+You may copy, distribute and modify the software provided that you state modifications and license them under LGPL-2.1. Anything statically linked to the library can only be redistributed under LGPL, but applications that use the library don't have to be. You must allow reverse engineering of your application as necessary to debug and relink the library.

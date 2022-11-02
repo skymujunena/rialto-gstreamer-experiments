@@ -1,0 +1,107 @@
+/*
+ * Copyright (C) 2022 Sky UK
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
+#pragma once
+
+#include "ClientBackendInterface.h"
+#include <IMediaPipeline.h>
+#include <IRialtoControl.h>
+
+#include <memory>
+
+namespace firebolt::rialto::client
+{
+class ClientBackend final : public ClientBackendInterface
+{
+public:
+    ClientBackend() : mMediaPlayerBackend(nullptr) {}
+    ~ClientBackend() final { mMediaPlayerBackend.reset(); }
+
+    void createMediaPlayerBackend(std::weak_ptr<IMediaPipelineClient> client, uint32_t maxWidth, uint32_t maxHeight) override
+    {
+        firebolt::rialto::VideoRequirements videoRequirements;
+        videoRequirements.maxWidth = maxWidth;
+        videoRequirements.maxHeight = maxHeight;
+
+        mRialtoControl = firebolt::rialto::IRialtoControlFactory::createFactory()->getRialtoControl();
+        if (!mRialtoControl)
+        {
+            GST_ERROR("Could not create rialto control");
+            return;
+        }
+        if (!mRialtoControl->setApplicationState(firebolt::rialto::ApplicationState::RUNNING))
+        {
+            GST_ERROR("Could not set RUNNING application state");
+            return;
+        }
+
+        mMediaPlayerBackend =
+            firebolt::rialto::IMediaPipelineFactory::createFactory()->createMediaPipeline(client, videoRequirements);
+
+        if (!mMediaPlayerBackend)
+        {
+            GST_ERROR("Could not create media player backend");
+            return;
+        }
+    }
+
+    bool isMediaPlayerBackendCreated() const override { return static_cast<bool>(mMediaPlayerBackend); }
+
+    bool attachSource(firebolt::rialto::IMediaPipeline::MediaSource &source) override
+    {
+        return mMediaPlayerBackend->attachSource(source);
+    }
+
+    std::vector<std::string> getSupportedCaps(firebolt::rialto::MediaSourceType type) override
+    {
+        return mMediaPlayerBackend->getSupportedCaps(type);
+    }
+
+    bool load(firebolt::rialto::MediaType type, const std::string &mimeType, const std::string &url) override
+    {
+        return mMediaPlayerBackend->load(type, mimeType, url);
+    }
+
+    bool play() override { return mMediaPlayerBackend->play(); }
+    bool pause() override { return mMediaPlayerBackend->pause(); }
+    bool stop() override { return mMediaPlayerBackend->stop(); }
+    bool haveData(firebolt::rialto::MediaSourceStatus status, unsigned int needDataRequestId) override
+    {
+        return mMediaPlayerBackend->haveData(status, needDataRequestId);
+    }
+    bool seek(int64_t seekPosition) override { return mMediaPlayerBackend->setPosition(seekPosition); }
+    bool setPlaybackRate(double rate) override { return mMediaPlayerBackend->setPlaybackRate(rate); }
+    bool setVideoWindow(unsigned int x, unsigned int y, unsigned int width, unsigned int height) override
+    {
+        return mMediaPlayerBackend->setVideoWindow(x, y, width, height);
+    }
+
+    firebolt::rialto::AddSegmentStatus
+    addSegment(unsigned int needDataRequestId,
+               const std::unique_ptr<firebolt::rialto::IMediaPipeline::MediaSegment> &mediaSegment)
+    {
+        return mMediaPlayerBackend->addSegment(needDataRequestId, mediaSegment);
+    }
+
+    bool getPosition(int64_t &position) override { return mMediaPlayerBackend->getPosition(position); }
+
+private:
+    std::unique_ptr<IMediaPipeline> mMediaPlayerBackend;
+    std::shared_ptr<IRialtoControl> mRialtoControl;
+};
+} // namespace firebolt::rialto::client
