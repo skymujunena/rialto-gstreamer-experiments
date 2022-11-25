@@ -45,8 +45,18 @@ static GstStateChangeReturn rialto_mse_audio_sink_change_state(GstElement *eleme
     {
     case GST_STATE_CHANGE_READY_TO_PAUSED:
     {
+        // Attach the media player client to media player manager
+        GstObject *parentObject = rialto_mse_base_get_oldest_gst_bin_parent(element);
+        if (!priv->m_mediaPlayerManager.attachMediaPlayerClient(parentObject))
+        {
+            GST_ERROR_OBJECT(sink, "Cannot attach the MediaPlayerClient");
+            return GST_STATE_CHANGE_FAILURE;
+        }
+        GST_INFO_OBJECT(element, "Attached media player client with parent %s(%p)", gst_object_get_name(parentObject), parentObject);
+
+        std::shared_ptr<GStreamerMSEMediaPlayerClient> client = priv->m_mediaPlayerManager.getMediaPlayerClient();
         firebolt::rialto::IMediaPipeline::MediaSource vsource(-1, firebolt::rialto::MediaSourceType::AUDIO, "");
-        if (!priv->m_mediaPlayerManager.getMediaPlayerClient()->attachSource(vsource, sink))
+        if ((!client) || (!client->attachSource(vsource, sink)))
         {
             GST_ERROR_OBJECT(sink, "Failed to attach audio source");
             return GST_STATE_CHANGE_FAILURE;
@@ -162,7 +172,8 @@ static gboolean rialto_mse_audio_sink_event(GstPad *pad, GstObject *parent, GstE
         g_free(capsStr);
         firebolt::rialto::IMediaPipeline::MediaSource asource = rialto_mse_audio_sink_create_media_source(sink, caps);
 
-        if (!sink->priv->m_mediaPlayerManager.getMediaPlayerClient()->attachSource(asource, sink))
+        std::shared_ptr<GStreamerMSEMediaPlayerClient> client = sink->priv->m_mediaPlayerManager.getMediaPlayerClient();
+        if ((!client) || (!client->attachSource(asource, sink)))
         {
             GST_ERROR_OBJECT(sink, "Failed to attach AUDIO source");
         }
@@ -188,12 +199,6 @@ static void rialto_mse_audio_sink_qos_handle(GstElement *element, uint64_t proce
 static void rialto_mse_audio_sink_init(RialtoMSEAudioSink *sink)
 {
     RialtoMSEBaseSinkPrivate *priv = sink->parent.priv;
-
-    if (!priv->m_mediaPlayerManager.getMediaPlayerClient())
-    {
-        GST_ERROR_OBJECT(sink, "Failed to initialise AUDIO sink. There's no media player client.");
-        return;
-    }
 
     if (!rialto_mse_base_sink_initialise_sinkpad(RIALTO_MSE_BASE_SINK(sink)))
     {

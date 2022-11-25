@@ -19,6 +19,7 @@
 #define USE_GLIB 1
 
 #include "RialtoGStreamerMSEBaseSink.h"
+#include "RialtoControlClientBackend.h"
 #include "GStreamerUtils.h"
 #include "RialtoGStreamerMSEBaseSinkPrivate.h"
 #include <IMediaPipeline.h>
@@ -98,6 +99,8 @@ static void rialto_mse_base_sink_init(RialtoMSEBaseSink *sink)
     sink->priv = static_cast<RialtoMSEBaseSinkPrivate *>(rialto_mse_base_sink_get_instance_private(sink));
     new (sink->priv) RialtoMSEBaseSinkPrivate();
 
+    sink->priv->m_rialtoControlClient = std::make_unique<firebolt::rialto::client::RialtoControlClientBackend>();
+
     RialtoGStreamerMSEBaseSinkCallbacks callbacks;
     callbacks.eosCallback = std::bind(rialto_mse_base_sink_eos_handler, sink);
     callbacks.seekCompletedCallback = std::bind(rialto_mse_base_sink_seek_completed_handler, sink);
@@ -169,17 +172,19 @@ static gboolean rialto_mse_base_sink_query(GstElement *element, GstQuery *query)
     }
     case GST_QUERY_POSITION:
     {
-        if (!sink->priv->m_mediaPlayerManager.hasControl())
+        std::shared_ptr<GStreamerMSEMediaPlayerClient> client = sink->priv->m_mediaPlayerManager.getMediaPlayerClient();
+        if ((!client) || (!sink->priv->m_mediaPlayerManager.hasControl()))
         {
             return FALSE;
         }
+
         GstFormat fmt;
         gst_query_parse_position(query, &fmt, NULL);
         switch (fmt)
         {
         case GST_FORMAT_TIME:
         {
-            gint64 position = sink->priv->m_mediaPlayerManager.getMediaPlayerClient()->getPosition();
+            gint64 position = client->getPosition();
             GST_DEBUG_OBJECT(sink, "Queried position is %" GST_TIME_FORMAT, GST_TIME_ARGS(position));
             if (position < 0)
             {
@@ -207,10 +212,11 @@ static void rialto_mse_base_sink_change_playback_rate(RialtoMSEBaseSink *sink, G
     gdouble playbackRate{1.0};
     if (gst_structure_get_double(structure, "rate", &playbackRate) == TRUE)
     {
-        GST_DEBUG_OBJECT(sink, "Instant playback rate change: %.2f", playbackRate);
-        if (sink->priv->m_mediaPlayerManager.hasControl())
+        std::shared_ptr<GStreamerMSEMediaPlayerClient> client = sink->priv->m_mediaPlayerManager.getMediaPlayerClient();
+        if ((client) && (sink->priv->m_mediaPlayerManager.hasControl()))
         {
-            sink->priv->m_mediaPlayerManager.getMediaPlayerClient()->setPlaybackRate(playbackRate);
+            GST_DEBUG_OBJECT(sink, "Instant playback rate change: %.2f", playbackRate);
+            client->setPlaybackRate(playbackRate);
         }
     }
 }
@@ -242,7 +248,14 @@ static void rialto_mse_base_sink_flush_stop(RialtoMSEBaseSink *sink, bool resetT
 
 static void rialto_mse_base_sink_seek(RialtoMSEBaseSink *sink)
 {
-    sink->priv->m_mediaPlayerManager.getMediaPlayerClient()->notifySourceStartedSeeking(sink->priv->mSourceId);
+    std::shared_ptr<GStreamerMSEMediaPlayerClient> client = sink->priv->m_mediaPlayerManager.getMediaPlayerClient();
+    if (!client)
+    {
+        GST_ERROR_OBJECT(sink, "Could not get the media player client");
+        return;
+    }
+
+    client->notifySourceStartedSeeking(sink->priv->mSourceId);
 
     if (sink->priv->m_mediaPlayerManager.hasControl())
     {
@@ -252,7 +265,7 @@ static void rialto_mse_base_sink_seek(RialtoMSEBaseSink *sink)
 
         std::unique_lock<std::mutex> lock(sink->priv->mSeekMutex);
         GST_INFO_OBJECT(sink, "Seeking to position %" GST_TIME_FORMAT, GST_TIME_ARGS(sink->priv->mLastSegment.start));
-        sink->priv->m_mediaPlayerManager.getMediaPlayerClient()->seek(sink->priv->mLastSegment.start);
+        client->seek(sink->priv->mLastSegment.start);
         sink->priv->mSeekCondVariable.wait(lock);
     }
 }
@@ -341,67 +354,91 @@ static GstStateChangeReturn rialto_mse_base_sink_change_state(GstElement *elemen
     GST_INFO_OBJECT(sink, "State change: (%s) -> (%s)", gst_element_state_get_name(current_state),
                     gst_element_state_get_name(next_state));
 
-    if (current_state != GST_STATE_NULL && next_state != GST_STATE_NULL &&
-        !priv->m_mediaPlayerManager.getMediaPlayerClient())
-    {
-        GST_ERROR_OBJECT(sink, "Cannot get MediaPlayerClient");
-        return GST_STATE_CHANGE_FAILURE;
-    }
-
     GstStateChangeReturn status = GST_STATE_CHANGE_SUCCESS;
+    std::shared_ptr<GStreamerMSEMediaPlayerClient> client = sink->priv->m_mediaPlayerManager.getMediaPlayerClient();
 
     switch (transition)
     {
     case GST_STATE_CHANGE_NULL_TO_READY:
-        if (!priv->m_mediaPlayerManager.getMediaPlayerClient()->isConnectedToServer())
+        priv->m_rialtoControlClient->getRialtoControlBackend();
+        if (!priv->m_rialtoControlClient->isRialtoControlBackendCreated())
         {
-            GST_INFO_OBJECT(sink, "Cannot connect to RialtoServer");
+            GST_ERROR_OBJECT(sink, "Cannot get the rialto control object");
+            return GST_STATE_CHANGE_FAILURE;
+        }
+
+        if (!priv->m_rialtoControlClient->setApplicationState(firebolt::rialto::ApplicationState::RUNNING))
+        {
+            GST_ERROR_OBJECT(sink, "Cannot set rialto state to running");
             return GST_STATE_CHANGE_FAILURE;
         }
         break;
     case GST_STATE_CHANGE_READY_TO_PAUSED:
     {
+        if (!client)
+        {
+            GST_ERROR_OBJECT(sink, "Cannot get the media player client object");
+            return GST_STATE_CHANGE_FAILURE;
+        }
+
         priv->mIsFlushOngoing = false;
         if (priv->m_mediaPlayerManager.hasControl())
         {
             gst_element_post_message(element, gst_message_new_async_start(GST_OBJECT(element)));
             status = GST_STATE_CHANGE_ASYNC;
-            priv->m_mediaPlayerManager.getMediaPlayerClient()->pause();
+            client->pause();
         }
         break;
     }
     case GST_STATE_CHANGE_PAUSED_TO_PLAYING:
+        if (!client)
+        {
+            GST_ERROR_OBJECT(sink, "Cannot get the media player client object");
+            return GST_STATE_CHANGE_FAILURE;
+        }
+
         if (priv->m_mediaPlayerManager.hasControl())
         {
             gst_element_post_message(element, gst_message_new_async_start(GST_OBJECT(element)));
             status = GST_STATE_CHANGE_ASYNC;
-            priv->m_mediaPlayerManager.getMediaPlayerClient()->play();
+            client->play();
         }
         break;
     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
+        if (!client)
+        {
+            GST_ERROR_OBJECT(sink, "Cannot get the media player client object");
+            return GST_STATE_CHANGE_FAILURE;
+        }
+
         if (priv->m_mediaPlayerManager.hasControl())
         {
             gst_element_post_message(element, gst_message_new_async_start(GST_OBJECT(element)));
             status = GST_STATE_CHANGE_ASYNC;
-            priv->m_mediaPlayerManager.getMediaPlayerClient()->pause();
+            client->pause();
         }
         break;
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-        priv->m_mediaPlayerManager.getMediaPlayerClient()->removeSource(priv->mSourceId);
+        if (!client)
+        {
+            GST_ERROR_OBJECT(sink, "Cannot get the media player client object");
+            return GST_STATE_CHANGE_FAILURE;
+        }
+
+        client->removeSource(priv->mSourceId);
         {
             std::lock_guard<std::mutex> lock(sink->priv->mSinkMutex);
             priv->clearBuffersUnlocked();
         }
         if (priv->m_mediaPlayerManager.hasControl())
         {
-            priv->m_mediaPlayerManager.getMediaPlayerClient()->stop();
+            client->stop();
         }
+
+        priv->m_mediaPlayerManager.releaseMediaPlayerClient();
         break;
     case GST_STATE_CHANGE_READY_TO_NULL:
-        // releasing Rialto backend here makes this a synchronous operation. If Rialto backend would be released in
-        // finalize method, it could overlap with initialisation of a new playback, which creates a problem with
-        // synchronisation in Rialto.
-        priv->m_mediaPlayerManager.releaseMediaPlayerClient();
+        priv->m_rialtoControlClient->removeRialtoControlBackend();
         break;
     default:
         break;
@@ -642,6 +679,22 @@ void rialto_mse_base_handle_rialto_server_sent_qos(RialtoMSEBaseSink *sink, uint
     {
         sink->priv->mCallbacks.qosCallback(processed, dropped);
     }
+}
+
+GstObject *rialto_mse_base_get_oldest_gst_bin_parent(GstElement *element)
+{
+    GstObject *parent = gst_object_get_parent(GST_OBJECT_CAST(element));
+    GstObject *result = GST_OBJECT_CAST(element);
+    if (parent)
+    {
+        if (GST_IS_BIN(parent))
+        {
+            result = rialto_mse_base_get_oldest_gst_bin_parent(GST_ELEMENT_CAST(parent));
+        }
+        gst_object_unref(parent);
+    }
+
+    return result;
 }
 
 std::vector<uint8_t> rialto_mse_base_sink_get_codec_data(RialtoMSEBaseSink *sink, const GstStructure *structure)
