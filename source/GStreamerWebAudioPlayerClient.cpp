@@ -122,9 +122,9 @@ bool GStreamerWebAudioPlayerClient::open(GstCaps *caps)
     }
     pcm.channels = tmp;
 
-    if (parseGstStructureFormat(format, pcm.sampleSize, pcm.isBigEndian, pcm.isSigned, pcm.isFloat))
+    if (!parseGstStructureFormat(format, pcm.sampleSize, pcm.isBigEndian, pcm.isSigned, pcm.isFloat))
     {
-        GST_ERROR("Can't parse format or it is not supported");
+        GST_ERROR("Can't parse format or it is not supported: %s", format.c_str());
         return result;
     }
 
@@ -140,6 +140,7 @@ bool GStreamerWebAudioPlayerClient::open(GstCaps *caps)
                 {
                     GST_ERROR("GetDeviceInfo failed, could not process samples");
                 }
+                m_frameSize = (pcm.sampleSize * pcm.channels) / CHAR_BIT;
                 mIsOpen = true;
             }
             else
@@ -252,14 +253,13 @@ void GStreamerWebAudioPlayerClient::pushSamples()
     {
         return;
     }
-    constexpr uint32_t kFrameSize = 4;
     uint32_t availableFrames = 0u;
     if (mClientBackend->getBufferAvailable(availableFrames))
     {
-        auto dataToPush = std::min(availableFrames * kFrameSize, mSampleDataBuffer.size());
-        if ((dataToPush / kFrameSize > 0))
+        auto dataToPush = std::min(availableFrames * m_frameSize, mSampleDataBuffer.size());
+        if ((dataToPush / m_frameSize > 0))
         {
-            if (mClientBackend->writeBuffer(dataToPush / kFrameSize, mSampleDataBuffer.data()))
+            if (mClientBackend->writeBuffer(dataToPush / m_frameSize, mSampleDataBuffer.data()))
             {
                 // remove pushed data from mSampleDataBuffer
                 if (dataToPush < mSampleDataBuffer.size())

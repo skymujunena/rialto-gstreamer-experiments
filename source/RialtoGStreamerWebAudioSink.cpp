@@ -27,8 +27,9 @@ GST_DEBUG_CATEGORY_STATIC(RialtoWebAudioSinkDebug);
 
 #define rialto_web_audio_sink_parent_class parent_class
 G_DEFINE_TYPE_WITH_CODE(RialtoWebAudioSink, rialto_web_audio_sink, GST_TYPE_BIN,
-                        GST_DEBUG_CATEGORY_INIT(RialtoWebAudioSinkDebug, "rialtowebaudiosink", 0,
-                                                "rialto web audio sink"));
+                        G_ADD_PRIVATE(RialtoWebAudioSink)
+                            GST_DEBUG_CATEGORY_INIT(RialtoWebAudioSinkDebug, "rialtowebaudiosink", 0,
+                                                    "rialto web audio sink"));
 
 GstFlowReturn rialto_web_audio_sink_preroll_callback(GstElement *element, RialtoWebAudioSink *sink)
 {
@@ -119,6 +120,7 @@ static gboolean rialto_web_audio_sink_send_event(GstElement *element, GstEvent *
     {
         GstCaps *caps;
         gst_event_parse_caps(event, &caps);
+        GST_INFO_OBJECT(sink, "Attaching AUDIO source with caps %" GST_PTR_FORMAT, caps);
     }
     default:
         break;
@@ -154,10 +156,10 @@ static GstStateChangeReturn rialto_web_audio_sink_change_state(GstElement *eleme
         sink->priv->mWebAudioClient->pause();
         break;
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-        GST_WARNING("GST_STATE_CHANGE_PAUSED_TO_READY");
+        GST_DEBUG("GST_STATE_CHANGE_PAUSED_TO_READY");
         break;
     case GST_STATE_CHANGE_READY_TO_NULL:
-        GST_WARNING("GST_STATE_CHANGE_READY_TO_NULL");
+        GST_DEBUG("GST_STATE_CHANGE_READY_TO_NULL");
     default:
         break;
     }
@@ -199,23 +201,27 @@ static void rialto_web_audio_sink_init(RialtoWebAudioSink *sink)
     sink->priv->mAppSink = gst_element_factory_make("appsink", nullptr);
     if (!sink->priv->mAppSink)
     {
-        GST_ERROR_OBJECT(sink, "Could not create appsink");
+        GST_ERROR_OBJECT(sink, "Could not create rialtowebaudiosink");
         return;
     }
 
-    sink->priv->mWebAudioClient = std::make_unique<GStreamerWebAudioPlayerClient>(sink->priv->mAppSink);
-    gst_element_set_name(sink->priv->mAppSink, "rialtouiaudioappsink");
+    sink->priv->mWebAudioClient = std::make_shared<GStreamerWebAudioPlayerClient>(sink->priv->mAppSink);
+    gst_element_set_name(sink->priv->mAppSink, "rialtowebaudioappsink");
     gst_bin_add(GST_BIN(sink), sink->priv->mAppSink);
     gst_element_sync_state_with_parent(sink->priv->mAppSink);
 
-    rialto_web_audio_sink_initialise_appsink(RIALTO_WEB_AUDIO_SINK(sink));
-    rialto_web_audio_sink_initialise_ghostpad(RIALTO_WEB_AUDIO_SINK(sink));
+    rialto_web_audio_sink_initialise_appsink(sink);
+    rialto_web_audio_sink_initialise_ghostpad(sink);
 
     GstPad *sinkPad = gst_element_get_static_pad(GST_ELEMENT_CAST(sink), "sink");
     if (sinkPad)
     {
         gst_pad_set_event_function(sinkPad, rialto_web_audio_sink_event);
         gst_object_unref(sinkPad);
+    }
+    else
+    {
+        GST_ERROR_OBJECT(sink, "Could not set pad's event function");
     }
 
     g_signal_connect(sink->priv->mAppSink, "new-preroll", G_CALLBACK(rialto_web_audio_sink_preroll_callback), sink);
