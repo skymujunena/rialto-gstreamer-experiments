@@ -18,6 +18,7 @@
 
 #include "RialtoGStreamerWebAudioSink.h"
 #include "GStreamerWebAudioPlayerClient.h"
+#include "RialtoControlClientBackend.h"
 #include <gst/gst.h>
 
 using namespace firebolt::rialto::client;
@@ -139,38 +140,81 @@ static GstStateChangeReturn rialto_web_audio_sink_change_state(GstElement *eleme
     GST_INFO_OBJECT(sink, "State change: (%s) -> (%s)", gst_element_state_get_name(current_state),
                     gst_element_state_get_name(next_state));
 
+    GstStateChangeReturn result = GST_STATE_CHANGE_SUCCESS;
     switch (transition)
     {
     case GST_STATE_CHANGE_NULL_TO_READY:
+    {
         GST_DEBUG("GST_STATE_CHANGE_NULL_TO_READY");
+
+        sink->priv->mRialtoControlClient->getRialtoControlBackend();
+        if (!sink->priv->mRialtoControlClient->isRialtoControlBackendCreated())
+        {
+            GST_ERROR_OBJECT(sink, "Cannot get the rialto control object");
+            result = GST_STATE_CHANGE_FAILURE;
+        }
+        else if (!sink->priv->mRialtoControlClient->setApplicationState(firebolt::rialto::ApplicationState::RUNNING))
+        {
+            GST_ERROR_OBJECT(sink, "Cannot set rialto state to running");
+            result = GST_STATE_CHANGE_FAILURE;
+        }
         break;
+    }
     case GST_STATE_CHANGE_READY_TO_PAUSED:
+    {
         GST_DEBUG("GST_STATE_CHANGE_READY_TO_PAUSED");
         break;
+    }
     case GST_STATE_CHANGE_PAUSED_TO_PLAYING:
+    {
         GST_DEBUG("GST_STATE_CHANGE_PAUSED_TO_PLAYING");
-        sink->priv->mWebAudioClient->play();
+        if (!sink->priv->mWebAudioClient->play())
+        {
+            GST_ERROR_OBJECT(sink, "Failed to play web audio");
+            result = GST_STATE_CHANGE_FAILURE;
+        }
         break;
+    }
     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
+    {
         GST_DEBUG("GST_STATE_CHANGE_PLAYING_TO_PAUSED");
-        sink->priv->mWebAudioClient->pause();
+        if (!sink->priv->mWebAudioClient->pause())
+        {
+            GST_ERROR_OBJECT(sink, "Failed to pause web audio");
+            result = GST_STATE_CHANGE_FAILURE;
+        }
         break;
+    }
     case GST_STATE_CHANGE_PAUSED_TO_READY:
+    {
         GST_DEBUG("GST_STATE_CHANGE_PAUSED_TO_READY");
+        if (!sink->priv->mWebAudioClient->close())
+        {
+            GST_ERROR_OBJECT(sink, "Failed to close web audio");
+            result = GST_STATE_CHANGE_FAILURE;
+        }
         break;
+    }
     case GST_STATE_CHANGE_READY_TO_NULL:
+    {
         GST_DEBUG("GST_STATE_CHANGE_READY_TO_NULL");
+
+        sink->priv->mRialtoControlClient->removeRialtoControlBackend();
+    }
     default:
         break;
     }
 
     gst_object_unref(sinkPad);
 
-    GstStateChangeReturn result = GST_ELEMENT_CLASS(parent_class)->change_state(element, transition);
-    if (G_UNLIKELY(result == GST_STATE_CHANGE_FAILURE))
+    if (result == GST_STATE_CHANGE_SUCCESS)
     {
-        GST_WARNING_OBJECT(sink, "State change failed");
-        return result;
+        GstStateChangeReturn result = GST_ELEMENT_CLASS(parent_class)->change_state(element, transition);
+        if (G_UNLIKELY(result == GST_STATE_CHANGE_FAILURE))
+        {
+            GST_WARNING_OBJECT(sink, "State change failed");
+            return result;
+        }
     }
 
     return result;
@@ -179,24 +223,29 @@ static GstStateChangeReturn rialto_web_audio_sink_change_state(GstElement *eleme
 static gboolean rialto_web_audio_sink_event(GstPad *pad, GstObject *parent, GstEvent *event)
 {
     RialtoWebAudioSink *sink = RIALTO_WEB_AUDIO_SINK(parent);
+    bool result = false;
     switch (GST_EVENT_TYPE(event))
     {
     case GST_EVENT_EOS:
     {
-        GST_WARNING("GST_EVENT_EOS");
-        sink->priv->mWebAudioClient->setEos();
+        GST_DEBUG("GST_EVENT_EOS");
+        result = sink->priv->mWebAudioClient->setEos();
+        gst_event_unref(event);
         break;
     }
     default:
+        result = gst_pad_event_default(pad, parent, event);
         break;
     }
-    return gst_pad_event_default(pad, parent, event);
+    return result;
 }
 
 static void rialto_web_audio_sink_init(RialtoWebAudioSink *sink)
 {
     sink->priv = static_cast<RialtoWebAudioSinkPrivate *>(rialto_web_audio_sink_get_instance_private(sink));
     new (sink->priv) RialtoWebAudioSinkPrivate();
+
+    sink->priv->mRialtoControlClient = std::make_unique<firebolt::rialto::client::RialtoControlClientBackend>();
 
     sink->priv->mAppSink = gst_element_factory_make("appsink", nullptr);
     if (!sink->priv->mAppSink)

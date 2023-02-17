@@ -65,6 +65,13 @@ public:
     bool open(GstCaps *caps);
 
     /**
+     * @brief Closes the web audio player.
+     *
+     * @retval true on success.
+     */
+    bool close();
+
+    /**
      * @brief Play the web audio.
      *
      * @retval true on success.
@@ -120,6 +127,13 @@ private:
     void getNextBufferData();
 
     /**
+     * @brief Checks the config against that previously stored in the object.
+     *
+     * @retval true if this is a new config.
+     */
+    bool isNewConfig(const std::string &audioMimeType, const firebolt::rialto::WebAudioConfig &config);
+
+    /**
      * @brief Backend message queue.
      */
     MessageQueue mBackendQueue;
@@ -173,4 +187,14 @@ private:
      * @brief The number of bytes in the frame.
      */
     uint32_t m_frameSize;
+
+    /**
+     * @brief The current web audio player mime type.
+     */
+    std::string m_mimeType;
+
+    /**
+     * @brief The current web audio player config.
+     */
+    firebolt::rialto::WebAudioConfig m_config;
 };

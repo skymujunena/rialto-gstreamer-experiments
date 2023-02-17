@@ -28,7 +28,7 @@ class WebAudioClientBackend final : public WebAudioClientBackendInterface
 {
 public:
     WebAudioClientBackend() : mWebAudioPlayerBackend(nullptr) {}
-    ~WebAudioClientBackend() final { mWebAudioPlayerBackend.reset(); }
+    ~WebAudioClientBackend() final { destroyWebAudioBackend(); }
 
     bool createWebAudioBackend(std::weak_ptr<IWebAudioPlayerClient> client, const std::string &audioMimeType,
                                const uint32_t priority, const WebAudioConfig *config) override
@@ -44,6 +44,7 @@ public:
         }
         return true;
     }
+    void destroyWebAudioBackend() override { mWebAudioPlayerBackend.reset(); }
 
     bool play() override { return mWebAudioPlayerBackend->play(); }
     bool pause() override { return mWebAudioPlayerBackend->pause(); }
