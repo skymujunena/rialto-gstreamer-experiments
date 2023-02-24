@@ -67,7 +67,7 @@ static GstStateChangeReturn rialto_mse_audio_sink_change_state(GstElement *eleme
         std::shared_ptr<GStreamerMSEMediaPlayerClient> client = priv->m_mediaPlayerManager.getMediaPlayerClient();
 
         std::unique_ptr<firebolt::rialto::IMediaPipeline::MediaSource> asource =
-            std::make_unique<firebolt::rialto::IMediaPipeline::MediaSourceAudio>(-1, "");
+            std::make_unique<firebolt::rialto::IMediaPipeline::MediaSourceAudio>("");
         if ((!client) || (!client->attachSource(asource, sink)))
         {
             GST_ERROR_OBJECT(sink, "Failed to attach audio source");
@@ -165,8 +165,8 @@ rialto_mse_audio_sink_create_media_source(RialtoMSEBaseSink *sink, GstCaps *caps
             mimeType = strct_name;
         }
 
-        return std::make_unique<firebolt::rialto::IMediaPipeline::MediaSourceAudio>(-1, mimeType, audioConfig,
-                                                                                    alignment, format, codecData);
+        return std::make_unique<firebolt::rialto::IMediaPipeline::MediaSourceAudio>(mimeType, audioConfig, alignment,
+                                                                                    format, codecData);
     }
 
     GST_ERROR_OBJECT(sink, "Empty caps' structure name! Failed to set mime type for audio media source.");
