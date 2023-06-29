@@ -31,6 +31,12 @@ G_DEFINE_TYPE_WITH_CODE(RialtoWebAudioSink, rialto_web_audio_sink, GST_TYPE_ELEM
                         G_ADD_PRIVATE(RialtoWebAudioSink)
                             GST_DEBUG_CATEGORY_INIT(RialtoWebAudioSinkDebug, "rialtowebaudiosink", 0,
                                                     "rialto web audio sink"));
+enum
+{
+    PROP_0,
+    PROP_TS_OFFSET,
+    PROP_LAST
+};
 
 static void rialto_web_audio_async_start(RialtoWebAudioSink *sink)
 {
@@ -281,6 +287,43 @@ static gboolean rialto_web_audio_sink_event(GstPad *pad, GstObject *parent, GstE
     return result;
 }
 
+static void rialto_web_audio_sink_get_property(GObject *object, guint propId, GValue *value, GParamSpec *pspec)
+{
+    switch (propId)
+    {
+    case PROP_TS_OFFSET:
+    {
+        GST_INFO_OBJECT(object, "ts-offset property not supported, RialtoWebAudioSink does not require the "
+                                "synchronisation of sources");
+        break;
+    }
+
+    default:
+    {
+        G_OBJECT_WARN_INVALID_PROPERTY_ID(object, propId, pspec);
+        break;
+    }
+    }
+}
+
+static void rialto_web_audio_sink_set_property(GObject *object, guint propId, const GValue *value, GParamSpec *pspec)
+{
+    switch (propId)
+    {
+    case PROP_TS_OFFSET:
+    {
+        GST_INFO_OBJECT(object, "ts-offset property not supported, RialtoWebAudioSink does not require the "
+                                "synchronisation of sources");
+        break;
+    }
+    default:
+    {
+        G_OBJECT_WARN_INVALID_PROPERTY_ID(object, propId, pspec);
+        break;
+    }
+    }
+}
+
 static GstFlowReturn rialto_web_audio_sink_chain(GstPad *pad, GstObject *parent, GstBuffer *buf)
 {
     RialtoWebAudioSink *sink = RIALTO_WEB_AUDIO_SINK(parent);
@@ -363,10 +406,17 @@ static void rialto_web_audio_sink_class_init(RialtoWebAudioSinkClass *klass)
                                    "Sky");
 
     gobjectClass->finalize = rialto_web_audio_sink_finalize;
+    gobjectClass->get_property = rialto_web_audio_sink_get_property;
+    gobjectClass->set_property = rialto_web_audio_sink_set_property;
 
     elementClass->change_state = rialto_web_audio_sink_change_state;
     elementClass->send_event = rialto_web_audio_sink_send_event;
 
+    g_object_class_install_property(gobjectClass, PROP_TS_OFFSET,
+                                    g_param_spec_int64("ts-offset",
+                                                       "ts-offset", "Not supported, RialtoWebAudioSink does not require the synchronisation of sources",
+                                                       G_MININT64, G_MAXINT64, 0,
+                                                       GParamFlags(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
     rialto_web_audio_sink_setup_supported_caps(elementClass);
 
     gst_element_class_set_details_simple(elementClass, "Rialto Web Audio Sink", "Decoder/Audio/Sink/Audio",
