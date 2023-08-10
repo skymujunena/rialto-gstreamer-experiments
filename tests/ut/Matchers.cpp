@@ -16,23 +16,18 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include "IMessageQueue.h"
-#include <gmock/gmock.h>
+#include "Matchers.h"
 
-class MessageQueueMock : public IMessageQueue
+namespace firebolt::rialto
 {
-public:
-    MOCK_METHOD(void, start, (), (override));
-    MOCK_METHOD(void, stop, (), (override));
-    MOCK_METHOD(void, clear, (), (override));
-    MOCK_METHOD(std::shared_ptr<Message>, waitForMessage, (), (override));
-    MOCK_METHOD(bool, postMessage, (const std::shared_ptr<Message> &msg), (override));
-    MOCK_METHOD(void, processMessages, (), (override));
-    MOCK_METHOD(bool, callInEventLoop, (const std::function<void()> &func), (override));
-};
+bool operator==(const VideoRequirements &lhs, const VideoRequirements &rhs)
+{
+    return lhs.maxWidth == rhs.maxWidth && lhs.maxHeight == rhs.maxHeight;
+}
 
-class MessageQueueFactoryMock : public IMessageQueueFactory
+bool operator==(const AudioConfig &lhs, const AudioConfig &rhs)
 {
-public:
-    MOCK_METHOD(std::unique_ptr<IMessageQueue>, createMessageQueue, (), (const, override));
-};
+    // Skip checking codecSpecificConfig, as it is returned by gstreamer function
+    return lhs.numberOfChannels == rhs.numberOfChannels && lhs.sampleRate == rhs.sampleRate;
+}
+} // namespace firebolt::rialto

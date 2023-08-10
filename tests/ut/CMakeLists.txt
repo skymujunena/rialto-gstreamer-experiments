@@ -18,8 +18,6 @@ if ( COVERAGE_ENABLED )
     add_compile_options(-coverage)
 endif()
 
-add_compile_definitions(PACKAGE="GSTRIALTO_UT")
-
 add_library(
         gstRialtoTestLib
 
@@ -33,6 +31,7 @@ add_library(
         ${CMAKE_SOURCE_DIR}/source/GStreamerMSEUtils.cpp
         ${CMAKE_SOURCE_DIR}/source/GStreamerMSEMediaPlayerClient.cpp
         ${CMAKE_SOURCE_DIR}/source/GStreamerWebAudioPlayerClient.cpp
+        ${CMAKE_SOURCE_DIR}/source/MessageQueue.cpp
         ${CMAKE_SOURCE_DIR}/source/RialtoGSteamerPlugin.cpp
         ${CMAKE_SOURCE_DIR}/source/RialtoGStreamerMSEBaseSink.cpp
         ${CMAKE_SOURCE_DIR}/source/MediaPlayerManager.cpp
@@ -57,6 +56,16 @@ target_link_libraries(
         ${GStreamerApp_LIBRARIES}
 )
 
+target_compile_options(gstRialtoTestLib
+        PUBLIC
+        -DPACKAGE="gstrialtosinks"
+        -DVERSION="1.0"
+        )
+
+set_target_properties(gstRialtoTestLib
+        PROPERTIES LINK_FLAGS "-Wl,--unresolved-symbols=report-all"
+        )
+
 if ( COVERAGE_ENABLED )
     target_link_libraries(
         gstRialtoTestLib
@@ -72,12 +81,15 @@ add_gtests (
         BufferParserTests.cpp
         ControlBackendTests.cpp
         GStreamerEmeUtilsTests.cpp
+        GstreamerMseAudioSinkTests.cpp
         GstreamerMseMediaPlayerClientTests.cpp
         GStreamerUtilsTests.cpp
         GstreamerWebAudioPlayerClientTests.cpp
+        Matchers.cpp
         MediaPlayerClientBackendTests.cpp
         MediaPlayerManagerTests.cpp
         MessageQueueTests.cpp
+        RialtoGstTest.cpp
         TimerTests.cpp
         WebAudioClientBackendTests.cpp
         )
