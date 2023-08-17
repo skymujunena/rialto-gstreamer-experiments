@@ -62,9 +62,10 @@ static void rialto_web_audio_sink_eos_handler(RialtoWebAudioSink *sink)
                          gst_element_state_get_name(currentState));
 
         const char *errMessage = "Web audio sink received EOS in non-playing state";
+        GError *gError{g_error_new_literal(GST_STREAM_ERROR, 0, errMessage)};
         gst_element_post_message(GST_ELEMENT_CAST(sink),
-                                 gst_message_new_error(GST_OBJECT_CAST(sink),
-                                                       g_error_new_literal(GST_STREAM_ERROR, 0, errMessage), errMessage));
+                                 gst_message_new_error(GST_OBJECT_CAST(sink), gError, errMessage));
+        g_error_free(gError);
     }
     else
     {
@@ -74,9 +75,9 @@ static void rialto_web_audio_sink_eos_handler(RialtoWebAudioSink *sink)
 
 static void rialto_web_audio_sink_error_handler(RialtoWebAudioSink *sink, const char *message)
 {
-    gst_element_post_message(GST_ELEMENT_CAST(sink),
-                             gst_message_new_error(GST_OBJECT_CAST(sink),
-                                                   g_error_new_literal(GST_STREAM_ERROR, 0, message), message));
+    GError *gError{g_error_new_literal(GST_STREAM_ERROR, 0, message)};
+    gst_element_post_message(GST_ELEMENT_CAST(sink), gst_message_new_error(GST_OBJECT_CAST(sink), gError, message));
+    g_error_free(gError);
 }
 
 static void rialto_web_audio_sink_rialto_state_changed_handler(RialtoWebAudioSink *sink,
@@ -280,6 +281,7 @@ static gboolean rialto_web_audio_sink_event(GstPad *pad, GstObject *parent, GstE
         {
             result = true;
         }
+        gst_event_unref(event);
         break;
     }
     default:
@@ -382,7 +384,7 @@ static void rialto_web_audio_sink_init(RialtoWebAudioSink *sink)
         std::make_shared<GStreamerWebAudioPlayerClient>(std::make_unique<firebolt::rialto::client::WebAudioClientBackend>(),
                                                         std::make_unique<MessageQueue>(), callbacks,
                                                         ITimerFactory::getFactory());
-
+    GST_OBJECT_FLAG_SET(sink, GST_ELEMENT_FLAG_SINK);
     if (!rialto_web_audio_sink_initialise_sinkpad(sink))
     {
         GST_ERROR_OBJECT(sink, "Failed to initialise AUDIO sink. Sink pad initialisation failed.");
