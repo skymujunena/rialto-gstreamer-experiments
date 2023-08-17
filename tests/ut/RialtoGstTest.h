@@ -46,9 +46,15 @@ public:
     RialtoMSEBaseSink *createVideoSink() const;
     GstElement *createPipelineWithSink(RialtoMSEBaseSink *sink) const;
     ReceivedMessages getMessages(GstElement *pipeline) const;
-    int32_t audioSourceWillBeAttached(const firebolt::rialto::IMediaPipeline::MediaSourceAudio &mediaSource);
+    bool waitForMessage(GstElement *pipeline, const GstMessageType &messageType) const;
+    int32_t audioSourceWillBeAttached(const firebolt::rialto::IMediaPipeline::MediaSourceAudio &mediaSource) const;
+    int32_t videoSourceWillBeAttached(const firebolt::rialto::IMediaPipeline::MediaSourceVideo &mediaSource) const;
+    int32_t dolbyVisionSourceWillBeAttached(
+        const firebolt::rialto::IMediaPipeline::MediaSourceVideoDolbyVision &mediaSource) const;
     void setPausedState(GstElement *pipeline, RialtoMSEBaseSink *sink);
-    void setNullState(GstElement *pipeline, int32_t sourceId);
+    void setPlayingState(GstElement *pipeline) const;
+    void setNullState(GstElement *pipeline, int32_t sourceId) const;
+    void pipelineWillGoToPausedState(RialtoMSEBaseSink *sink) const;
     void setCaps(RialtoMSEBaseSink *sink, GstCaps *caps) const;
     void sendPlaybackStateNotification(RialtoMSEBaseSink *sink, const firebolt::rialto::PlaybackState &state) const;
     void installAudioVideoStreamsProperty(GstElement *pipeline) const;
