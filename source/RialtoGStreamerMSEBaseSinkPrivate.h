@@ -71,6 +71,8 @@ struct _RialtoMSEBaseSinkPrivate
     std::condition_variable m_seekCondVariable;
     std::mutex m_seekMutex;
 
+    std::mutex m_lostStateMutex;
+
     std::string m_uri;
     RialtoGStreamerMSEBaseSinkCallbacks m_callbacks;
 

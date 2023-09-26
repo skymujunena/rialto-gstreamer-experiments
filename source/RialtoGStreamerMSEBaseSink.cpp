@@ -111,6 +111,10 @@ static void rialto_mse_base_sink_error_handler(RialtoMSEBaseSink *sink, const ch
 static void rialto_mse_base_sink_rialto_state_changed_handler(RialtoMSEBaseSink *sink,
                                                               firebolt::rialto::PlaybackState state)
 {
+    // Wait for lost state to complete before handling a state notification,
+    // otherwise states can change while we are processing.
+    std::unique_lock<std::mutex> lock(sink->priv->m_lostStateMutex);
+
     GstState current = GST_STATE(sink);
     GstState next = GST_STATE_NEXT(sink);
     GstState pending = GST_STATE_PENDING(sink);
@@ -945,6 +949,7 @@ bool rialto_mse_base_sink_get_dv_profile(RialtoMSEBaseSink *sink, const GstStruc
 
 void rialto_mse_base_sink_lost_state(RialtoMSEBaseSink *sink)
 {
+    std::unique_lock<std::mutex> lock(sink->priv->m_lostStateMutex);
     sink->priv->m_isStateCommitNeeded = true;
     gst_element_lost_state(GST_ELEMENT_CAST(sink));
 }
